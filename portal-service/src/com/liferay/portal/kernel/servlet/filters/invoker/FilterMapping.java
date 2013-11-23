@@ -14,20 +14,22 @@
 
 package com.liferay.portal.kernel.servlet.filters.invoker;
 
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+
+import javax.servlet.Filter;
+import javax.servlet.FilterConfig;
+import javax.servlet.http.HttpServletRequest;
+
+
 import com.liferay.portal.kernel.log.Log;
 import com.liferay.portal.kernel.log.LogFactoryUtil;
 import com.liferay.portal.kernel.util.CharPool;
 import com.liferay.portal.kernel.util.GetterUtil;
 import com.liferay.portal.kernel.util.StringPool;
 import com.liferay.portal.kernel.util.Validator;
-
-import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import javax.servlet.Filter;
-import javax.servlet.FilterConfig;
-import javax.servlet.http.HttpServletRequest;
 
 /**
  * @author Mika Koivisto
@@ -49,6 +51,65 @@ public class FilterMapping {
 	public Filter getFilter() {
 		return _filter;
 	}
+	
+        /**
+         * Strips URI path parameters from each path segment of the supplied
+         * URI.
+         * 
+         * From <a href='http://tools.ietf.org/html/rfc2396'>RFC2396</a> (URI):
+         * <pre>
+         *   The path component contains data, specific to the authority (or the
+         *   scheme if there is no authority component), identifying the resource
+         *   within the scope of that scheme and authority.
+         *
+         *      path          = [ abs_path | opaque_part ]
+         *
+         *      path_segments = segment *( "/" segment )
+         *      segment       = *pchar *( ";" param )
+         *      param         = *pchar
+         *
+         *      pchar         = unreserved | escaped |
+         *                      ":" | "@" | "&" | "=" | "+" | "$" | ","
+         *
+         *   The path may consist of a sequence of path segments separated by a
+         *   single slash "/" character.  Within a path segment, the characters
+         *   "/", ";", "=", and "?" are reserved.  Each path segment may include a
+         *   sequence of parameters, indicated by the semicolon ";" character.
+         *   The parameters are not significant to the parsing of relative
+         *   references.
+         * </pre>
+         * From the <a href='http://jcp.org/aboutJava/communityprocess/final/jsr315/index.html'>servlet spec</a>:
+         * <pre>
+         *   The path used for mapping to a servlet is the request URL from 
+         *   the request object minus the context path and the path parameters.
+         * </pre>
+         * 
+         * @param uri The URI to strip path parameters from.
+         * @return The stripped URI.
+         * @author Lucas Theisen
+         */
+	String stripUriPathParameters( String uri ) {
+            char[] uriChars = uri.toCharArray();
+            int insertPosition = 0;
+            boolean ignore = false;
+            for ( char c : uriChars ) {
+                if ( c == ';' ) {
+                    ignore = true;
+                }
+                else if ( c == '/' ) {
+                    ignore = false;
+                    uriChars[insertPosition++] = c;
+                }
+                else if ( c == '?' ) {
+                    ignore = false;
+                    uriChars[insertPosition++] = c;
+                }
+                else if ( !ignore ) {
+                    uriChars[insertPosition++] = c;
+                }
+            }
+            return new String( uriChars, 0, insertPosition );
+        }
 
 	public boolean isMatch(
 		HttpServletRequest request, Dispatcher dispatcher, String uri) {
@@ -61,9 +122,7 @@ public class FilterMapping {
 			return false;
 		}
 
-		Matcher matcher = _uriJSessionIdPattern.matcher(uri);
-
-		uri = matcher.replaceFirst(StringPool.BLANK);
+		uri = stripUriPathParameters( uri );
 
 		boolean matchURLPattern = false;
 
@@ -249,7 +308,6 @@ public class FilterMapping {
 	private boolean _dispatcherInclude;
 	private boolean _dispatcherRequest;
 	private Filter _filter;
-	private Pattern _uriJSessionIdPattern = Pattern.compile(";jsessionid=.*");
 	private List<String> _urlPatterns;
 	private Pattern _urlRegexIgnorePattern;
 	private Pattern _urlRegexPattern;
